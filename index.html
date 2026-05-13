@@ -361,6 +361,61 @@
   let score = 0;
   let isAnimating = false;
 
+  // ===== Sound =====
+  let audioCtx = null;
+
+  function initAudio() {
+    if (!audioCtx) {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+  }
+
+  function playKnock() {
+    try {
+      initAudio();
+      // Short noise burst (attack)
+      const noiseLen = 0.06;
+      const noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * noiseLen, audioCtx.sampleRate);
+      const noiseData = noiseBuf.getChannelData(0);
+      for (let i = 0; i < noiseData.length; i++) {
+        noiseData[i] = (Math.random() * 2 - 1) * Math.exp(-i / (audioCtx.sampleRate * 0.015));
+      }
+      const noiseSrc = audioCtx.createBufferSource();
+      noiseSrc.buffer = noiseBuf;
+
+      const noiseGain = audioCtx.createGain();
+      noiseGain.gain.setValueAtTime(0.25, audioCtx.currentTime);
+      noiseGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + noiseLen);
+
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = 'bandpass';
+      filter.frequency.value = 1200;
+      filter.Q.value = 0.8;
+
+      noiseSrc.connect(filter);
+      filter.connect(noiseGain);
+      noiseGain.connect(audioCtx.destination);
+      noiseSrc.start();
+
+      // Low thud (body resonance)
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(280, audioCtx.currentTime);
+      osc.frequency.exponentialRampToValueAtTime(120, audioCtx.currentTime + 0.08);
+
+      const oscGain = audioCtx.createGain();
+      oscGain.gain.setValueAtTime(0.35, audioCtx.currentTime);
+      oscGain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.12);
+
+      osc.connect(oscGain);
+      oscGain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.12);
+    } catch(e) {
+      // Audio not available, silently ignore
+    }
+  }
+
   const messages = [
     { text: '功德 +1',       color: '#ffd700' },
     { text: 'Bug -1',        color: '#ff6b6b' },
@@ -390,14 +445,15 @@
     el.textContent = msg.text;
     el.style.color = msg.color;
 
-    const rect = fish.getBoundingClientRect();
-    const fishCenterX = rect.left + rect.width / 2;
-    const fishTop = rect.top;
+    const rect = container.getBoundingClientRect();
+    const cx = rect.left + rect.width / 2;
+    const top = rect.top;
 
     const drift = (Math.random() - 0.5) * 160;
     el.style.setProperty('--drift', drift);
-    el.style.left = `calc(${fishCenterX}px - 50% + ${Math.random() * 60 - 30}px)`;
-    el.style.top = `${fishTop - 10}px`;
+    el.style.left = `${cx + Math.random() * 40 - 20}px`;
+    el.style.top = `${top}px`;
+    el.style.transform = 'translateX(-50%)';
     el.style.fontSize = `${20 + Math.random() * 8}px`;
 
     floatContainer.appendChild(el);
@@ -410,6 +466,8 @@
   function handleClick(e) {
     if (isAnimating) return;
     isAnimating = true;
+
+    playKnock();
 
     fish.classList.remove('bounce');
     void fish.offsetWidth;
